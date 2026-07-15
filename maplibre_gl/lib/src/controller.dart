@@ -374,6 +374,11 @@ class MapLibreMapController extends ChangeNotifier {
 
   final MapLibrePlatform _maplibrePlatform;
 
+  /// Returns the platform interface for direct access to platform callbacks.
+  ///
+  /// This is useful for adding platform-level callbacks like camera move.
+  MapLibrePlatform get maplibrePlatform => _maplibrePlatform;
+
   /// Tracks whether the controller has already been disposed
   bool _isDisposed = false;
 
@@ -922,6 +927,39 @@ class MapLibreMapController extends ChangeNotifier {
       minzoom: minzoom,
       maxzoom: maxzoom,
     );
+  }
+
+  /// Adds a custom OpenGL layer to the map.
+  ///
+  /// The [id] uniquely identifies the layer. The [renderingMode] should be
+  /// '2d' or '3d' to specify the rendering mode.
+  ///
+  /// The returned [Future] completes after the change has been made on the
+  /// platform side.
+  Future<void> addCustomLayer({
+    required String id,
+    String renderingMode = '3d',
+  }) async {
+    await _maplibrePlatform.addCustomLayer(id, renderingMode);
+  }
+
+  /// Removes a custom layer previously added with [addCustomLayer].
+  ///
+  /// The returned [Future] completes after the change has been made on the
+  /// platform side.
+  Future<void> removeCustomLayer(String id) async {
+    await _maplibrePlatform.removeCustomLayer(id);
+  }
+
+  /// Sends data to a custom layer for rendering.
+  ///
+  /// The [data] is a JSON-serializable map containing the data that the
+  /// custom layer will use for rendering (e.g., bus positions).
+  ///
+  /// The returned [Future] completes after the change has been made on the
+  /// platform side.
+  Future<void> setCustomLayerData(String id, Map<String, dynamic> data) async {
+    await _maplibrePlatform.setCustomLayerData(id, data);
   }
 
   /// Updates user location tracking mode.

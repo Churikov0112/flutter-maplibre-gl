@@ -89,6 +89,8 @@ export 'package:maplibre_gl_platform_interface/maplibre_gl_platform_interface.da
         VectorSourceProperties,
         VideoSourceProperties;
 
+part 'src/custom_layer.dart';
+
 part 'src/controller.dart';
 
 part 'src/maplibre_map.dart';

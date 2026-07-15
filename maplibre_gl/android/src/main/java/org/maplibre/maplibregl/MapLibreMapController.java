@@ -78,6 +78,7 @@ import org.maplibre.android.style.layers.SymbolLayer;
 import org.maplibre.android.style.sources.CustomGeometrySource;
 import org.maplibre.android.style.sources.GeoJsonOptions;
 import org.maplibre.android.style.sources.GeoJsonSource;
+import org.maplibre.android.style.layers.CustomLayer;
 import org.maplibre.android.style.sources.ImageSource;
 import org.maplibre.android.style.sources.Source;
 import org.maplibre.android.style.sources.VectorSource;
@@ -158,6 +159,7 @@ final class MapLibreMapController
 
   private Set<String> interactiveFeatureLayerIds;
   private Map<String, FeatureCollection> addedFeaturesByLayer;
+  private Map<String, Long> customLayerPtrs = new HashMap<>();
 
   private LatLngBounds bounds = null;
   Style.OnStyleLoaded onStyleLoadedCallback =
@@ -1598,6 +1600,108 @@ final class MapLibreMapController
           updateLocationComponentLayer();
 
           result.success(null);
+          break;
+        }
+      case "customLayer#add":
+        {
+          final String layerId = call.argument("id");
+          final String renderingMode = call.argument("renderingMode");
+          
+          if (style == null || !style.isFullyLoaded()) {
+            result.error("STYLE_NOT_READY", "Style is null or not fully loaded. Has onStyleLoaded() already been invoked?", null);
+            break;
+          }
+          
+          // Guard: if libbus_custom_layer.so failed to load, nativeCreate() would
+          // throw UnsatisfiedLinkError (an Error, not an Exception) and crash the
+          // platform thread. Degrade gracefully instead.
+          if (!BusCustomLayerHost.isAvailable()) {
+            Log.w(TAG, "Native bus custom layer library unavailable; skipping 3D layer");
+            result.success(null);
+            break;
+          }
+          try {
+            // Create the native host; MapLibre's engine takes ownership of the
+            // pointer (wraps it in a unique_ptr inside CustomLayer).
+            long nativePtr = BusCustomLayerHost.nativeCreate();
+            CustomLayer customLayer = new CustomLayer(layerId, nativePtr);
+            style.addLayer(customLayer);
+            customLayerPtrs.put(layerId, nativePtr);
+            result.success(null);
+          } catch (Throwable e) {
+            // Throwable (not Exception) so a native link/Error never crashes us.
+            Log.e(TAG, "Failed to add custom layer: " + e.getMessage());
+            result.error("CUSTOM_LAYER_ERROR", "Failed to add custom layer: " + e.getMessage(), null);
+          }
+          break;
+        }
+      case "customLayer#remove":
+        {
+          final String layerId = call.argument("id");
+          
+          if (style == null || !style.isFullyLoaded()) {
+            result.error("STYLE_NOT_READY", "Style is null or not fully loaded. Has onStyleLoaded() already been invoked?", null);
+            break;
+          }
+          
+          try {
+            // Drop the pointer first so no in-flight setData/updateBuses can
+            // touch it, then remove the layer. The engine owns the native host
+            // (unique_ptr inside CustomLayer) and frees it on removeLayer, so we
+            // must NOT call nativeDestroy here — that would double-free.
+            customLayerPtrs.remove(layerId);
+            style.removeLayer(layerId);
+            result.success(null);
+          } catch (Throwable e) {
+            Log.e(TAG, "Failed to remove custom layer: " + e.getMessage());
+            result.error("CUSTOM_LAYER_ERROR", "Failed to remove custom layer: " + e.getMessage(), null);
+          }
+          break;
+        }
+      case "customLayer#setData":
+        {
+          final String layerId = call.argument("id");
+          final Map<String, Object> data = call.argument("data");
+          
+          try {
+            Long ptr = customLayerPtrs.get(layerId);
+            if (ptr != null && data != null) {
+              // Convert bus data map to BusInfo array
+              List<Map<String, Object>> buses = (List<Map<String, Object>>) data.get("buses");
+              if (buses != null) {
+                java.util.ArrayList<BusCustomLayerHost.BusInfo> busList = new java.util.ArrayList<>();
+                for (Map<String, Object> busData : buses) {
+                  double lat = ((Number) busData.get("lat")).doubleValue();
+                  double lng = ((Number) busData.get("lng")).doubleValue();
+                  float bearing = ((Number) busData.get("bearing")).floatValue();
+                  String type = (String) busData.get("type");
+                  
+                  float r = 0.0f, g = 1.0f, b = 0.0f; // default: bus = green
+                  switch (type != null ? type : "") {
+                    case "tram":
+                      r = 1.0f; g = 0.0f; b = 0.0f; // red
+                      break;
+                    case "trolley":
+                      r = 0.0f; g = 0.0f; b = 1.0f; // blue
+                      break;
+                    case "bus":
+                    default:
+                      r = 0.0f; g = 1.0f; b = 0.0f; // green
+                      break;
+                  }
+                  
+                  busList.add(new BusCustomLayerHost.BusInfo(lat, lng, bearing, r, g, b));
+                }
+                
+                BusCustomLayerHost.nativeUpdateBuses(
+                    ptr, busList.toArray(new BusCustomLayerHost.BusInfo[0]));
+              }
+            }
+            result.success(null);
+          } catch (Throwable e) {
+            Log.e(TAG, "Failed to update custom layer data: " + e.getMessage());
+            result.success(null); // Non-fatal
+          }
           break;
         }
       case "locationComponent#getLastLocation":

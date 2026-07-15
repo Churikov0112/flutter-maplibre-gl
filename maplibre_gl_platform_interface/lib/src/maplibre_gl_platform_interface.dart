@@ -396,6 +396,24 @@ abstract class MapLibrePlatform {
     double? maxzoom,
   });
 
+  /// Adds a custom OpenGL layer to the map.
+  ///
+  /// The [id] uniquely identifies the layer. The [host] provides OpenGL
+  /// rendering callbacks. The [renderingMode] should be '2d' or '3d'.
+  Future<void> addCustomLayer(
+    String id,
+    String renderingMode,
+  );
+
+  /// Removes a custom layer previously added with [addCustomLayer].
+  Future<void> removeCustomLayer(String id);
+
+  /// Sends bus position data to a custom layer for rendering.
+  ///
+  /// The [data] is a JSON-serializable map containing bus positions
+  /// that the custom layer host will use for rendering.
+  Future<void> setCustomLayerData(String id, Map<String, dynamic> data);
+
   Future<void> addSource(String sourceId, SourceProperties properties);
 
   Future<void> setLayerVisibility(String layerId, bool visible);

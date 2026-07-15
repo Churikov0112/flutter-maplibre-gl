@@ -996,6 +996,32 @@ class MapLibreMethodChannel extends MapLibrePlatform {
   }
 
   @override
+  Future<void> addCustomLayer(
+    String id,
+    String renderingMode,
+  ) async {
+    await _channel.invokeMethod('customLayer#add', <String, dynamic>{
+      'id': id,
+      'renderingMode': renderingMode,
+    });
+  }
+
+  @override
+  Future<void> removeCustomLayer(String id) async {
+    await _channel.invokeMethod('customLayer#remove', <String, dynamic>{
+      'id': id,
+    });
+  }
+
+  @override
+  Future<void> setCustomLayerData(String id, Map<String, dynamic> data) async {
+    await _channel.invokeMethod('customLayer#setData', <String, dynamic>{
+      'id': id,
+      'data': data,
+    });
+  }
+
+  @override
   Future<void> setFeatureForGeoJsonSource(
     String sourceId,
     Map<String, dynamic> geojsonFeature,
