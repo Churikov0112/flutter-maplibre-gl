@@ -1606,30 +1606,46 @@ final class MapLibreMapController
         {
           final String layerId = call.argument("id");
           final String renderingMode = call.argument("renderingMode");
-          
+
           if (style == null || !style.isFullyLoaded()) {
             result.error("STYLE_NOT_READY", "Style is null or not fully loaded. Has onStyleLoaded() already been invoked?", null);
             break;
           }
-          
-          // Guard: if libbus_custom_layer.so failed to load, nativeCreate() would
-          // throw UnsatisfiedLinkError (an Error, not an Exception) and crash the
-          // platform thread. Degrade gracefully instead.
-          if (!BusCustomLayerHost.isAvailable()) {
-            Log.w(TAG, "Native bus custom layer library unavailable; skipping 3D layer");
+
+          // The native host is application-specific — it is created by an
+          // app-registered CustomLayerHostProvider (see MapLibreCustomLayers).
+          CustomLayerHostProvider provider = MapLibreCustomLayers.getHostProvider();
+          if (provider == null) {
+            Log.w(TAG, "No CustomLayerHostProvider registered; skipping custom layer '" + layerId + "'");
             result.success(null);
             break;
           }
+
+          long hostPtr = 0L;
+          boolean ownershipTransferred = false;
           try {
-            // Create the native host; MapLibre's engine takes ownership of the
-            // pointer (wraps it in a unique_ptr inside CustomLayer).
-            long nativePtr = BusCustomLayerHost.nativeCreate();
-            CustomLayer customLayer = new CustomLayer(layerId, nativePtr);
+            Map<String, Object> args = new HashMap<>();
+            args.put("id", layerId);
+            args.put("renderingMode", renderingMode);
+            hostPtr = provider.createHost(layerId, args);
+            if (hostPtr == 0L) {
+              Log.w(TAG, "Provider returned no host for custom layer '" + layerId + "'");
+              result.success(null);
+              break;
+            }
+            // Handing the pointer to CustomLayer transfers ownership to the
+            // engine (it wraps it in a unique_ptr); after this it frees the host.
+            CustomLayer customLayer = new CustomLayer(layerId, hostPtr);
+            ownershipTransferred = true;
             style.addLayer(customLayer);
-            customLayerPtrs.put(layerId, nativePtr);
+            customLayerPtrs.put(layerId, hostPtr);
             result.success(null);
           } catch (Throwable e) {
             // Throwable (not Exception) so a native link/Error never crashes us.
+            // Only free the host if the engine never took ownership of it.
+            if (hostPtr != 0L && !ownershipTransferred) {
+              try { provider.destroyHost(layerId, hostPtr); } catch (Throwable ignore) {}
+            }
             Log.e(TAG, "Failed to add custom layer: " + e.getMessage());
             result.error("CUSTOM_LAYER_ERROR", "Failed to add custom layer: " + e.getMessage(), null);
           }
@@ -1638,17 +1654,16 @@ final class MapLibreMapController
       case "customLayer#remove":
         {
           final String layerId = call.argument("id");
-          
+
           if (style == null || !style.isFullyLoaded()) {
             result.error("STYLE_NOT_READY", "Style is null or not fully loaded. Has onStyleLoaded() already been invoked?", null);
             break;
           }
-          
+
           try {
-            // Drop the pointer first so no in-flight setData/updateBuses can
-            // touch it, then remove the layer. The engine owns the native host
-            // (unique_ptr inside CustomLayer) and frees it on removeLayer, so we
-            // must NOT call nativeDestroy here — that would double-free.
+            // Drop the pointer first so no in-flight setData can touch it, then
+            // remove the layer. The engine owns the host (unique_ptr inside
+            // CustomLayer) and frees it on removeLayer, so we do NOT free it here.
             customLayerPtrs.remove(layerId);
             style.removeLayer(layerId);
             result.success(null);
@@ -1662,40 +1677,14 @@ final class MapLibreMapController
         {
           final String layerId = call.argument("id");
           final Map<String, Object> data = call.argument("data");
-          
+
           try {
+            CustomLayerHostProvider provider = MapLibreCustomLayers.getHostProvider();
             Long ptr = customLayerPtrs.get(layerId);
-            if (ptr != null && data != null) {
-              // Convert bus data map to BusInfo array
-              List<Map<String, Object>> buses = (List<Map<String, Object>>) data.get("buses");
-              if (buses != null) {
-                java.util.ArrayList<BusCustomLayerHost.BusInfo> busList = new java.util.ArrayList<>();
-                for (Map<String, Object> busData : buses) {
-                  double lat = ((Number) busData.get("lat")).doubleValue();
-                  double lng = ((Number) busData.get("lng")).doubleValue();
-                  float bearing = ((Number) busData.get("bearing")).floatValue();
-                  String type = (String) busData.get("type");
-                  
-                  float r = 0.0f, g = 1.0f, b = 0.0f; // default: bus = green
-                  switch (type != null ? type : "") {
-                    case "tram":
-                      r = 1.0f; g = 0.0f; b = 0.0f; // red
-                      break;
-                    case "trolley":
-                      r = 0.0f; g = 0.0f; b = 1.0f; // blue
-                      break;
-                    case "bus":
-                    default:
-                      r = 0.0f; g = 1.0f; b = 0.0f; // green
-                      break;
-                  }
-                  
-                  busList.add(new BusCustomLayerHost.BusInfo(lat, lng, bearing, r, g, b));
-                }
-                
-                BusCustomLayerHost.nativeUpdateBuses(
-                    ptr, busList.toArray(new BusCustomLayerHost.BusInfo[0]));
-              }
+            if (provider != null && ptr != null && data != null) {
+              // The data payload is opaque to the plugin; the app's provider
+              // interprets it.
+              provider.updateData(layerId, ptr, data);
             }
             result.success(null);
           } catch (Throwable e) {
