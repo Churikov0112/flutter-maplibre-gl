@@ -998,11 +998,13 @@ class MapLibreMethodChannel extends MapLibrePlatform {
   @override
   Future<void> addCustomLayer(
     String id,
-    String renderingMode,
-  ) async {
+    String renderingMode, {
+    String? belowLayerId,
+  }) async {
     await _channel.invokeMethod('customLayer#add', <String, dynamic>{
       'id': id,
       'renderingMode': renderingMode,
+      'belowLayerId': belowLayerId,
     });
   }
 

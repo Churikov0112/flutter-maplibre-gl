@@ -939,8 +939,13 @@ class MapLibreMapController extends ChangeNotifier {
   Future<void> addCustomLayer({
     required String id,
     String renderingMode = '3d',
+    String? belowLayerId,
   }) async {
-    await _maplibrePlatform.addCustomLayer(id, renderingMode);
+    await _maplibrePlatform.addCustomLayer(
+      id,
+      renderingMode,
+      belowLayerId: belowLayerId,
+    );
   }
 
   /// Removes a custom layer previously added with [addCustomLayer].

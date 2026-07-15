@@ -398,20 +398,21 @@ abstract class MapLibrePlatform {
 
   /// Adds a custom OpenGL layer to the map.
   ///
-  /// The [id] uniquely identifies the layer. The [host] provides OpenGL
-  /// rendering callbacks. The [renderingMode] should be '2d' or '3d'.
+  /// The [id] uniquely identifies the layer. The native host is created by the
+  /// app-registered provider. The [renderingMode] should be '2d' or '3d'.
+  /// If [belowLayerId] is given the layer is inserted below that layer (falling
+  /// back to the top if that layer does not exist).
   Future<void> addCustomLayer(
     String id,
-    String renderingMode,
-  );
+    String renderingMode, {
+    String? belowLayerId,
+  });
 
   /// Removes a custom layer previously added with [addCustomLayer].
   Future<void> removeCustomLayer(String id);
 
-  /// Sends bus position data to a custom layer for rendering.
-  ///
-  /// The [data] is a JSON-serializable map containing bus positions
-  /// that the custom layer host will use for rendering.
+  /// Sends data to a custom layer for rendering. The [data] is a
+  /// JSON-serializable map the app's custom-layer host interprets.
   Future<void> setCustomLayerData(String id, Map<String, dynamic> data);
 
   Future<void> addSource(String sourceId, SourceProperties properties);

@@ -1400,6 +1400,9 @@ final class MapLibreMapController
             if (layer instanceof LineLayer) {
               properties = LayerPropertyConverter
                   .interpretLineLayerProperties(call.argument("properties"));
+            } else if (layer instanceof FillExtrusionLayer) {
+              properties = LayerPropertyConverter
+                  .interpretFillExtrusionLayerProperties(call.argument("properties"));
             } else if (layer instanceof FillLayer) {
               properties = LayerPropertyConverter
                   .interpretFillLayerProperties(call.argument("properties"));
@@ -1606,6 +1609,7 @@ final class MapLibreMapController
         {
           final String layerId = call.argument("id");
           final String renderingMode = call.argument("renderingMode");
+          final String belowLayerId = call.argument("belowLayerId");
 
           if (style == null || !style.isFullyLoaded()) {
             result.error("STYLE_NOT_READY", "Style is null or not fully loaded. Has onStyleLoaded() already been invoked?", null);
@@ -1637,7 +1641,13 @@ final class MapLibreMapController
             // engine (it wraps it in a unique_ptr); after this it frees the host.
             CustomLayer customLayer = new CustomLayer(layerId, hostPtr);
             ownershipTransferred = true;
-            style.addLayer(customLayer);
+            // Insert below belowLayerId when it exists (e.g. to keep the layer
+            // under the buildings layer); otherwise add on top.
+            if (belowLayerId != null && style.getLayer(belowLayerId) != null) {
+              style.addLayerBelow(customLayer, belowLayerId);
+            } else {
+              style.addLayer(customLayer);
+            }
             customLayerPtrs.put(layerId, hostPtr);
             result.success(null);
           } catch (Throwable e) {
