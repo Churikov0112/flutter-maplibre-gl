@@ -47,6 +47,7 @@ import org.maplibre.android.geometry.LatLngQuad;
 import org.maplibre.android.geometry.VisibleRegion;
 import org.maplibre.android.gestures.AndroidGesturesManager;
 import org.maplibre.android.gestures.MoveGestureDetector;
+import org.maplibre.android.gestures.ShoveGestureDetector;
 import org.maplibre.android.location.LocationComponent;
 import org.maplibre.android.location.LocationComponentActivationOptions;
 import org.maplibre.android.location.LocationComponentOptions;
@@ -256,6 +257,21 @@ final class MapLibreMapController
     if (bounds != null) {
       mapLibreMap.setLatLngBoundsForCameraTarget(bounds);
     }
+
+    // Gesture tuning. Stock detectors are too greedy: by default a pinch that starts
+    // first fully disables the rotate detector until the gesture ends
+    // (UiSettings.disableRotateWhenScaling = true), and shove (tilt) requires fingers
+    // to be near-horizontal (20°) plus a 16dp vertical pull before it begins. In
+    // practice rotate/tilt only ever started if fingers were held still first, so the
+    // scale detector could not claim the gesture. Relax all three.
+    mapLibreMap.getUiSettings().setDisableRotateWhenScaling(false);
+    // Без disableRotateWhenScaling карта охотнее уходит в поворот во время зума;
+    // компенсируем повышенным порогом угла (дефолт карты — 3°): вращение должно
+    // быть намеренным, случайный перекос пальцев при пинче — ещё нет.
+    mapLibreMap.getGesturesManager().getRotateGestureDetector().setAngleThreshold(6f);
+    ShoveGestureDetector shoveDetector = mapLibreMap.getGesturesManager().getShoveGestureDetector();
+    shoveDetector.setMaxShoveAngle(50f);
+    shoveDetector.setPixelDeltaThreshold(6 * density);
 
     if (androidGesturesManager != null) {
       androidGesturesManager.setMoveGestureListener(new MoveGestureListener());
